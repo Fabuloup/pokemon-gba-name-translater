@@ -1,0 +1,1 @@
+# pokemon-gba-name-translater
