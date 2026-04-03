@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Pokémon GBA Name Patcher</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    button { margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<h2>Patch ROM Pokémon GBA</h2>
+
+<input type="file" id="romInput"><br>
+<button onclick="processRom()">Convertir</button>
+<br><br>
+<a id="downloadLink" download="patched.gba">Télécharger la ROM modifiée</a>
+
+<script src="./data.js"></script>
+<script>
+
+// ===== Charset simplifié (A-Z + espace)
+const charMap = {};
+const reverseMap = {};
+
+const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+for (let i = 0; i < letters.length; i++) {
+  charMap[letters[i]] = 0xBB + i;
+  reverseMap[0xBB + i] = letters[i];
+}
+charMap["é"] = 0x1B;
+reverseMap[0x1B] = "é";
+charMap[" "] = 0x00;
+reverseMap[0x00] = " "
+charMap["-"] = 0xAE;
+reverseMap[0xAE] = "-";
+charMap["’"] = 0xB4;
+charMap["'"] = 0xB4;
+reverseMap[0xB4] = "’";
+charMap["."] = 0xAD;
+reverseMap[0xAD] = ".";
+charMap["♂"] = 0xB5;
+reverseMap[0xB5] = "♂";
+charMap["♀"] = 0xB6;
+reverseMap[0xB6] = "♀";
+
+// ===== Config Emerald (US)
+const POKEMON_OFFSET = 0x3185D3;
+const POKEMON_COUNT = 386+25; // 386 pkmns + 25 blank slots
+const POKEMON_NAME_LENGTH = 20;
+
+const MOVE_OFFSET = 0x31977E;
+const MOVE_COUNT = 354;
+const MOVE_NAME_LENGTH = 20;
+
+// ===== Utils
+function normalize(str) {
+  return str
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z \-\'\’\.\♂\♀]/g, "");
+}
+
+function encodeName(name) {
+  const length = name.length
+  const bytes = new Uint8Array(length+1).fill(0xFF);
+  name = normalize(name);
+
+  for (let i = 0; i < length; i++) {
+    bytes[i] = charMap[name[i]] || 0x00;
+  }
+
+  return bytes;
+}
+
+function decodeName(bytes) {
+  let str = "";
+  for (let b of bytes) {
+    if (b === 0xFF) break;
+    if(b === 0x00) {
+      str += " ";
+      continue;
+    }
+    str += reverseMap[b] || "";
+  }
+  return str.trim();
+}
+
+function analyzeSlot(rom, pos, maxSize) {
+  let end = pos;
+  let hasFF = false;
+  let slotSize = 0;
+
+  for (let i = 0; i < maxSize; i++) {
+    if (rom[pos + i] === 0xFF) {
+      end = pos + i;
+      hasFF = true;
+      break;
+    }
+  }
+
+  if (!hasFF) {
+    end = pos + maxSize - 1;
+  }
+
+  slotSize = end - pos + 1;
+
+  return { end, slotSize };
+}
+
+function buildNameForSlot(name, slotSize) {
+  let encoded = encodeName(name);
+
+  // tronquer si trop long
+  if (encoded.length > slotSize - 1) {
+    encoded = encoded.slice(0, slotSize);
+    encoded[slotSize] = 0xFF; // fin de chaîne
+  }
+
+  const paddingSize = slotSize - encoded.length;
+  
+  const result = new Uint8Array(slotSize).fill(0x00);
+  
+  // padding à gauche
+  result.set(encoded, paddingSize);
+  
+  // Debug
+  if(name.startsWith("ARCKO")) {
+    console.log(`slotSize: ${slotSize}, encoded: ${Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' ')}, encoded length: ${encoded.length}, padding: ${paddingSize}, result: ${Array.from(result).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+  }
+  return result;
+}
+
+function patchTable(rom, offset, count, size, dict) {
+  let changes = 0;
+  let endOfPreviousSlot = offset;
+
+  for (let i = 0; i < count; i++) {
+    const pos = endOfPreviousSlot;
+    const {end, slotSize} = analyzeSlot(rom, pos, size);
+    const slice = rom.slice(pos, end);
+
+    const original = decodeName(slice);
+
+    if (dict[original]) {
+      const newName = dict[original];
+      //const encoded = buildNameForSlot(newName, slotSize);
+      const encoded = buildNameForSlot(newName, original.length + 1);
+      console.log(`Patch ${original} (${pos.toString(16)}) -> ${newName}`);
+      rom.set(encoded, pos);
+      changes++;
+    }
+    else {
+      console.warn(`Pas de correspondance pour: (${pos.toString(16)}) ${original}`);
+    }
+
+    endOfPreviousSlot = end + 1;
+  }
+
+  return changes;
+}
+
+async function processRom() {
+  const file = document.getElementById('romInput').files[0];
+  if (!file) return alert("Charge une ROM");
+
+  const buffer = await file.arrayBuffer();
+  const rom = new Uint8Array(buffer);
+
+  const pokemonDict = dict.pokemon || {};
+  const moveDict = dict.moves || {};
+
+  const pkmChanges = patchTable(
+    rom,
+    POKEMON_OFFSET,
+    POKEMON_COUNT,
+    POKEMON_NAME_LENGTH,
+    pokemonDict
+  );
+
+  const moveChanges = patchTable(
+    rom,
+    MOVE_OFFSET,
+    MOVE_COUNT,
+    MOVE_NAME_LENGTH,
+    moveDict
+  );
+
+  const blob = new Blob([rom], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.getElementById('downloadLink');
+  link.href = url;
+
+  alert(`Terminé !\nPokémon modifiés: ${pkmChanges}\nAttaques modifiées: ${moveChanges}`);
+}
+
+</script>
+
+</body>
+</html>
