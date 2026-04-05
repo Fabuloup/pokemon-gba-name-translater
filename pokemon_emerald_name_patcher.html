@@ -67,14 +67,19 @@ function encodeName(name) {
   return bytes;
 }
 
-function encodeWithTerminator(name) {
-  const encoded = encodeName(name);
-  const result = new Uint8Array(name.length + 1);
-
-  result.set(encoded, 0);
-  result[encoded.length] = 0xFF;
-
-  return result;
+function detectSlotSize(rom, foundAt) {
+  let slotStart = foundAt;
+  // Find the 0xFF in the name
+  let ffPos = foundAt;
+  while (ffPos < rom.length && rom[ffPos] !== 0xFF) {
+    ffPos++;
+  }
+  // From ffPos +1, scan until non-0x00
+  let slotEnd = ffPos;
+  while (slotEnd + 1 < rom.length && rom[slotEnd+1] === 0x00) {
+    slotEnd++;
+  }
+  return {start: slotStart, size: slotEnd - slotStart};
 }
 
 function buildNameForSlot(name, slotSize) {
@@ -85,13 +90,10 @@ function buildNameForSlot(name, slotSize) {
     encoded = encoded.slice(0, slotSize);
     encoded[slotSize-1] = 0xFF; // end of string
   }
-
-  const paddingSize = slotSize - encoded.length;
   
   const result = new Uint8Array(slotSize).fill(0x00);
   
-  // left padding
-  result.set(encoded, paddingSize);
+  result.set(encoded, 0);
   
   return result;
 }
@@ -133,7 +135,7 @@ function patchTable(rom, offset, dict) {
     let endOfPreviousSlot = offset;
 
     for (let [english, translated] of Object.entries(dict)) {
-      const search = encodeWithTerminator(english);
+      const search = encodeName(english);
       const foundAt = findSequenceFuzzy(rom, search, endOfPreviousSlot, 1);
 
       if(foundAt === -1) {
@@ -142,13 +144,17 @@ function patchTable(rom, offset, dict) {
         continue;
       }
       
-      const replacement = buildNameForSlot(translated, search.length);
+      const slotInfo = detectSlotSize(rom, foundAt);
+      const slotSize = slotInfo.size;
+      const slotStart = slotInfo.start;
+      
+      const replacement = buildNameForSlot(translated, slotSize);
       replaceAt(rom, foundAt, replacement);
 
       document.getElementById('conversion_state').innerText += "■";
       console.log(`✔ ${english} -> ${translated} (${foundAt.toString(16)})`);
 
-      endOfPreviousSlot = foundAt + search.length;
+      endOfPreviousSlot = foundAt + slotSize;
       changes++;
 
       // Yield to allow UI updates
