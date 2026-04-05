@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Décodeur Hexadécimal</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #output, #encodeOutput {
+      margin-top: 20px;
+      padding: 10px;
+      background: #fff;
+      border: 1px solid #ccc;
+      min-height: 40px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Décodeur Hexadécimal</h2>
+
+<label>Entrer le texte hexadécimal :</label>
+<textarea id="input" placeholder="Ex: AE BD C5 FF ou AEBDC5FF"></textarea>
+
+<button onclick="decodeHex()">Décoder</button>
+
+<div id="output"></div>
+
+<h2>Encodeur de Texte</h2>
+
+<label>Entrer le texte à encoder :</label>
+<textarea id="encodeInput" placeholder="Ex: POKEMON"></textarea>
+
+<button onclick="encodeText()">Encoder</button>
+
+<div id="encodeOutput"></div>
+
+<script>
+const charMap = {};
+const reverseMap = {};
+
+const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+for (let i = 0; i < letters.length; i++) {
+  charMap[letters[i]] = 0xBB + i;
+  reverseMap[0xBB + i] = letters[i];
+}
+charMap["é"] = 0x1B;
+reverseMap[0x1B] = "é";
+charMap[" "] = 0x00;
+reverseMap[0x00] = " ";
+charMap["-"] = 0xAE;
+reverseMap[0xAE] = "-";
+charMap["’"] = 0xB4;
+charMap["'"] = 0xB4;
+reverseMap[0xB4] = "’";
+charMap["."] = 0xAD;
+reverseMap[0xAD] = ".";
+charMap["♂"] = 0xB5;
+reverseMap[0xB5] = "♂";
+charMap["♀"] = 0xB6;
+reverseMap[0xB6] = "♀";
+
+// ===== Utils
+function normalize(str) {
+  return str
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z \-\'\’\.\♂\♀]/g, "");
+}
+
+function encodeName(name) {
+  const length = name.length
+  const bytes = new Uint8Array(length+1).fill(0xFF);
+  name = normalize(name);
+
+  for (let i = 0; i < length; i++) {
+    bytes[i] = charMap[name[i]] || 0x00;
+  }
+
+  return bytes;
+}
+
+function decodeHex() {
+  let input = document.getElementById("input").value;
+
+  // Nettoyage : enlève espaces et caractères non hex
+  input = input.replace(/[^0-9A-Fa-f]/g, "");
+
+  let result = "";
+
+  for (let i = 0; i < input.length; i += 2) {
+    let hexByte = input.substr(i, 2);
+    let value = parseInt(hexByte, 16);
+
+    if (reverseMap[value] !== undefined) {
+      result += reverseMap[value];
+    } else {
+      result += "?"; // caractère inconnu
+    }
+  }
+
+  document.getElementById("output").textContent = result;
+}
+
+function encodeText() {
+  let input = document.getElementById("encodeInput").value;
+
+  const bytes = encodeName(input);
+
+  let result = "";
+  for (let byte of bytes) {
+    result += byte.toString(16).toUpperCase().padStart(2, '0') + " ";
+  }
+
+  document.getElementById("encodeOutput").textContent = result.trim();
+}
+</script>
+
+</body>
+</html>
