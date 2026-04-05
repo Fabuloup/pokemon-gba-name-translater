@@ -16,11 +16,12 @@
 <button onclick="processRom()">Convertir</button>
 <br><br>
 <a id="downloadLink" download="patched.gba">Télécharger la ROM modifiée</a>
+<div id="conversion_state" style="max-width: 100vw; word-break: break-all; overflow-wrap: break-word; hyphens: none; line-height: 0.7em; letter-spacing: 2px; font-family: monospace;"></div>
 
 <script src="./data.js"></script>
 <script>
 
-// ===== Charset simplifié (A-Z + espace)
+// ===== Simplified Charset (A-Z + space)
 const charMap = {};
 const reverseMap = {};
 
@@ -45,15 +46,6 @@ reverseMap[0xB5] = "♂";
 charMap["♀"] = 0xB6;
 reverseMap[0xB6] = "♀";
 
-// ===== Config Emerald (US)
-const POKEMON_OFFSET = 0x3185D3;
-const POKEMON_COUNT = 386+25; // 386 pkmns + 25 blank slots
-const POKEMON_NAME_LENGTH = 20;
-
-const MOVE_OFFSET = 0x31977E;
-const MOVE_COUNT = 354;
-const MOVE_NAME_LENGTH = 20;
-
 // ===== Utils
 function normalize(str) {
   return str
@@ -75,96 +67,103 @@ function encodeName(name) {
   return bytes;
 }
 
-function decodeName(bytes) {
-  let str = "";
-  for (let b of bytes) {
-    if (b === 0xFF) break;
-    if(b === 0x00) {
-      str += " ";
-      continue;
-    }
-    str += reverseMap[b] || "";
-  }
-  return str.trim();
-}
+function encodeWithTerminator(name) {
+  const encoded = encodeName(name);
+  const result = new Uint8Array(name.length + 1);
 
-function analyzeSlot(rom, pos, maxSize) {
-  let end = pos;
-  let hasFF = false;
-  let slotSize = 0;
+  result.set(encoded, 0);
+  result[encoded.length] = 0xFF;
 
-  for (let i = 0; i < maxSize; i++) {
-    if (rom[pos + i] === 0xFF) {
-      end = pos + i;
-      hasFF = true;
-      break;
-    }
-  }
-
-  if (!hasFF) {
-    end = pos + maxSize - 1;
-  }
-
-  slotSize = end - pos + 1;
-
-  return { end, slotSize };
+  return result;
 }
 
 function buildNameForSlot(name, slotSize) {
   let encoded = encodeName(name);
 
-  // tronquer si trop long
+  // truncate if too long
   if (encoded.length > slotSize - 1) {
     encoded = encoded.slice(0, slotSize);
-    encoded[slotSize] = 0xFF; // fin de chaîne
+    encoded[slotSize-1] = 0xFF; // end of string
   }
 
   const paddingSize = slotSize - encoded.length;
   
   const result = new Uint8Array(slotSize).fill(0x00);
   
-  // padding à gauche
+  // left padding
   result.set(encoded, paddingSize);
   
-  // Debug
-  if(name.startsWith("ARCKO")) {
-    console.log(`slotSize: ${slotSize}, encoded: ${Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' ')}, encoded length: ${encoded.length}, padding: ${paddingSize}, result: ${Array.from(result).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
-  }
   return result;
 }
 
-function patchTable(rom, offset, count, size, dict) {
-  let changes = 0;
-  let endOfPreviousSlot = offset;
+function findSequenceFuzzy(rom, sequence, startOffset = 0, tolerance = 1) {
+  for (let i = startOffset; i < rom.length - sequence.length; i++) {
+    let errors = 0;
 
-  for (let i = 0; i < count; i++) {
-    const pos = endOfPreviousSlot;
-    const {end, slotSize} = analyzeSlot(rom, pos, size);
-    const slice = rom.slice(pos, end);
-
-    const original = decodeName(slice);
-
-    if (dict[original]) {
-      const newName = dict[original];
-      //const encoded = buildNameForSlot(newName, slotSize);
-      const encoded = buildNameForSlot(newName, original.length + 1);
-      console.log(`Patch ${original} (${pos.toString(16)}) -> ${newName}`);
-      rom.set(encoded, pos);
-      changes++;
-    }
-    else {
-      console.warn(`Pas de correspondance pour: (${pos.toString(16)}) ${original}`);
+    for (let j = 0; j < sequence.length; j++) {
+      if (rom[i + j] !== sequence[j]) {
+        errors++;
+        if (errors > tolerance) break;
+      }
     }
 
-    endOfPreviousSlot = end + 1;
+    if ((rom[i-1] === 0x00 || rom[i-1] === 0XFF)
+    && errors <= tolerance) {
+      return i;
+    }
   }
 
-  return changes;
+  if(startOffset > 0) {
+    // console.warn(`Séquence ${Array.from(sequence).map(b => b.toString(16).padStart(2, '0')).join(' ')} non trouvée à partir de l'offset ${startOffset.toString(16)}, réessayage depuis le début`);
+    return findSequenceFuzzy(rom, sequence, 0, tolerance);
+  }
+  
+  return -1;
+}
+
+function replaceAt(rom, offset, newData) {
+  for (let i = 0; i < newData.length; i++) {
+    rom[offset + i] = newData[i];
+  }
+}
+
+function patchTable(rom, offset, dict) {
+  return new Promise(async (resolve) => {
+    let changes = 0;
+    let endOfPreviousSlot = offset;
+
+    for (let [english, translated] of Object.entries(dict)) {
+      const search = encodeWithTerminator(english);
+      const foundAt = findSequenceFuzzy(rom, search, endOfPreviousSlot, 1);
+
+      if(foundAt === -1) {
+        document.getElementById('conversion_state').innerText += "-";
+        console.warn(`Pas de correspondance pour: ${english} (${Array.from(search).map(b => b.toString(16).padStart(2, '0')).join(' ')})`);
+        continue;
+      }
+      
+      const replacement = buildNameForSlot(translated, search.length);
+      replaceAt(rom, foundAt, replacement);
+
+      document.getElementById('conversion_state').innerText += "■";
+      console.log(`✔ ${english} -> ${translated} (${foundAt.toString(16)})`);
+
+      endOfPreviousSlot = foundAt + search.length;
+      changes++;
+
+      // Yield to allow UI updates
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    resolve({changes, endOfPreviousSlot});
+  });
 }
 
 async function processRom() {
   const file = document.getElementById('romInput').files[0];
   if (!file) return alert("Charge une ROM");
+
+  document.getElementById('conversion_state').innerText = "";
 
   const buffer = await file.arrayBuffer();
   const rom = new Uint8Array(buffer);
@@ -172,19 +171,15 @@ async function processRom() {
   const pokemonDict = dict.pokemon || {};
   const moveDict = dict.moves || {};
 
-  const pkmChanges = patchTable(
+  const { changes: pkmChanges, endOfPreviousSlot: endOfPokemonTable } = await patchTable(
     rom,
-    POKEMON_OFFSET,
-    POKEMON_COUNT,
-    POKEMON_NAME_LENGTH,
+    0,
     pokemonDict
   );
 
-  const moveChanges = patchTable(
+  const { changes: moveChanges, endOfPreviousSlot: endOfMoveTable } = await patchTable(
     rom,
-    MOVE_OFFSET,
-    MOVE_COUNT,
-    MOVE_NAME_LENGTH,
+    endOfPokemonTable,
     moveDict
   );
 
@@ -194,7 +189,7 @@ async function processRom() {
   const link = document.getElementById('downloadLink');
   link.href = url;
 
-  alert(`Terminé !\nPokémon modifiés: ${pkmChanges}\nAttaques modifiées: ${moveChanges}`);
+  alert(`Finished !\nPokémon updated: ${pkmChanges}\nMoves updated: ${moveChanges}`);
 }
 
 </script>
