@@ -1,5 +1,6 @@
 # Pokémon GBA Name Translator
 
+I wanted to play Pokémon ROM hacks with the Pokémon names and attacks in French, so I coded this.
 A web-based tool to translate Pokémon names in Game Boy Advance ROMs, specifically designed for Pokémon Emerald. This project allows you to patch ROM files to replace English Pokémon and move names with translated equivalents in any language.
 
 ## Features
