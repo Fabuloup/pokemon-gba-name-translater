@@ -23,11 +23,12 @@ A web-based tool to translate Pokémon names in Game Boy Advance ROMs, specifica
 
 ### Patching a ROM
 
-1. Open `pokemon_emerald_name_patcher.html` in your web browser.
-2. Click "Choose File" and select your Pokémon Emerald ROM (.gba file).
-3. Click "Convertir" to start the patching process.
-4. Monitor the progress in the status area.
-5. Once complete, click "Télécharger la ROM modifiée" to download the patched ROM.
+1. Copy `data_fr.js` and rename it to `data.js` in the same directory as `pokemon_emerald_name_patcher.html`. Edit this file to customize translations if needed.
+2. Open `pokemon_emerald_name_patcher.html` in your web browser.
+3. Click "Choose File" and select your Pokémon Emerald ROM (.gba file).
+4. Click "Convertir" to start the patching process.
+5. Monitor the progress in the status area.
+6. Once complete, click "Télécharger la ROM modifiée" to download the patched ROM.
 
 ### Customizing Translations
 
@@ -40,6 +41,7 @@ To translate to a different language:
 ## Technical Details
 
 The tool uses a custom character mapping for Pokémon Emerald's font:
+
 - A-Z: 0xBB to 0xD4
 - Space: 0x00
 - Special characters: é (0x1B), - (0xAE), ' (0xB4), . (0xAD), ♂ (0xB5), ♀ (0xB6)
