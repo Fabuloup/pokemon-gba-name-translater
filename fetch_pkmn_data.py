@@ -2,14 +2,7 @@ import requests
 from requests_negotiate_sspi import HttpNegotiateAuth
 import time
 
-proxy = "http://172.20.11.16:8080"
-proxies = {
-    "http": proxy,
-    "https": proxy
-}
-
 session = requests.Session()
-session.proxies.update(proxies)
 session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 })
