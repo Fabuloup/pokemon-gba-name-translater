@@ -75,8 +75,8 @@ function detectSlotSize(rom, foundAt) {
     ffPos++;
   }
   // From ffPos +1, scan until non-0x00
-  let slotEnd = ffPos;
-  while (slotEnd + 1 < rom.length && rom[slotEnd+1] === 0x00) {
+  let slotEnd = ffPos + 1;
+  while (slotEnd < rom.length && rom[slotEnd] === 0x00) {
     slotEnd++;
   }
   return {start: slotStart, size: slotEnd - slotStart};
@@ -110,6 +110,7 @@ function findSequenceFuzzy(rom, sequence, startOffset = 0, tolerance = 1) {
     }
 
     if ((rom[i-1] === 0x00 || rom[i-1] === 0XFF)
+    && (rom[i + sequence.length-1] === 0xFF)
     && errors <= tolerance) {
       return i;
     }
